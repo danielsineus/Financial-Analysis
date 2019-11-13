@@ -1,0 +1,360 @@
+---
+title: "Finance"
+author: "Daniel Sineus"
+date: "11/12/2019"
+output: word_document
+---
+
+```{r libra, include=TRUE, echo=TRUE}
+library(tidyverse)
+library(tidyr)
+library(timetk)
+library(lubridate)
+library(quantmod)
+library(PerformanceAnalytics)
+library(tibbletime)
+library(highcharter)
+library(scales)
+library(purrr)
+symbols1<-c("SPY", "FB", "FORD", "DIS", "EBAY")
+price1<-getSymbols(symbols1, 
+                   src = "yahoo",
+                   from="2012-12-31",
+                   to="2017-12-31",
+                   auto.assign = TRUE,
+                   warnings = FALSE)%>%
+  map(~Ad(get(.)))%>%
+  reduce(merge)%>%
+  `colnames<-`(symbols1)
+symbols2<-c("AAPL", "M", "MSFT", "TSCO", "CCMP")
+price2<-getSymbols(symbols2, 
+                   src = "yahoo",
+                   from="2012-12-31",
+                   to="2017-12-31",
+                   auto.assign = TRUE,
+                   warnings = FALSE)%>%
+  map(~Ad(get(.)))%>%
+  reduce(merge)%>%
+  `colnames<-`(symbols2)
+head(price2, 10)
+symbols3<-c("WHR", "BRK", "CAT", "WMT", "GE")
+price3<-getSymbols(symbols3, 
+                   src = "yahoo",
+                   from="2012-12-31",
+                   to="2017-12-31",
+                   auto.assign = TRUE,
+                   warnings = FALSE)%>%
+  map(~Ad(get(.)))%>%
+  reduce(merge)%>%
+  `colnames<-`(symbols3)
+head(price3, 10)
+
+```
+
+```{r conversion, include=TRUE, echo=TRUE}
+#monthly returns in xts
+price1_monthly<-to.monthly(price1, indexAt = "lastof", OHLC=FALSE)
+head(price1)
+str(price1)
+periodicity(price1)
+asset_price1<-Return.calculate(price1_monthly, method = "log")%>%
+  na.omit()
+head(asset_price1)
+```
+
+```{r tidyver, include=TRUE, echo=TRUE}
+# monthly return with tidyverse
+price2_month<-price2%>%
+  to.monthly(indexAt = "lastof", OHLC=FALSE)%>%
+  #convert the index to a date
+  data.frame(date=index(.))%>%
+  remove_rownames()%>%
+  gather(asset, prices, -date)%>%
+  group_by(asset)%>%
+  mutate(returns=(log(prices)-log(lag(prices))))%>%
+  select(-prices)%>%
+  spread(asset, returns)%>%
+  select(date, symbols2)%>%
+  #remove the first rows
+  na.omit()
+head(price2_month)
+
+#visualize the assets
+return_price2<-price2_month%>%
+  gather(asset, returns, -date)%>%
+  group_by(asset)
+head(return_price2)
+```
+
+```{r tidyquant, include=TRUE, echo=FALSE}
+library(TTR)
+library(tidyverse)
+library(tidyquant)
+price3_month<-price3%>%
+  tk_tbl(preserve_index = TRUE,
+         rename_index = "date")%>%
+  gather(asset, prices, -date)%>%
+  group_by(asset)%>%
+  tq_transmute(mutate_fun = periodReturn,
+               period="monthly",
+               type="log")%>%
+  spread(asset, monthly.returns)%>%
+  select(date, symbols3)%>%
+  slice(-1)
+
+head(price3_month)
+help(tq_transmute)
+```
+
+#PLOT
+```{r plot, include=TRUE, echo=TRUE}
+#visualize the stock indexes in xts
+highchart(type = "stock")%>%
+  hc_title(text="Monthly log Return")%>%
+  hc_add_series(asset_price1[,symbols1[1]],
+                name=symbols1[1])%>%
+  hc_add_series(asset_price1[,symbols1[2]],
+                name=symbols1[2])%>%
+  hc_add_series(asset_price1[,symbols1[3]],
+                name=symbols1[3])%>%
+  hc_add_series(asset_price1[,symbols1[4]],
+                name=symbols1[4])%>%
+  hc_add_series(asset_price1[,symbols1[5]],
+                name=symbols1[5])%>%
+  hc_add_theme(hc_theme_flat())%>%
+  hc_navigator(enabled=FALSE)%>%
+  hc_scrollbar(enabled=FALSE)%>%
+  hc_exporting(enabled=TRUE)%>%
+  hc_legend(enabled=TRUE)
+
+# to plot an histogram in xts format
+hist_price1<-hist(asset_price1[, symbols1[1]],
+                  breaks = 50,
+                  plot = FALSE)
+#plot the histogram with highcharter package
+hchart(hist_price1, color="cornflowerblue")%>%
+  hc_title(text=paste(symbols1[1],
+                      "Log Return Distribution",
+                      sep = " "))%>%
+  hc_add_theme(hc_theme_flat())%>%
+  hc_exporting(enabled=TRUE)%>%
+  hc_legend(enabled=FALSE)
+# create a function to plot all of the stocks in price1
+hist_funct<-function(n=1, object, color){
+  hist_pr1<-hist(object[,symbols1[n]],
+                 breaks = 50,
+                 plot = FALSE)
+  
+hchart(hist_pr1, color=color)%>%
+  hc_title(text=paste(symbols1[n],
+                      "Log Return Distribution",
+                      sep = " "))%>%
+  hc_add_theme(hc_theme_flat())%>%
+  hc_exporting(enabled=TRUE)%>%
+  hc_legend(enabled=FALSE)  
+}
+
+library(ggplot2)
+return_price2%>%
+  ggplot(aes(x=returns, fill=asset))+
+  geom_histogram(alpha=0.45, bindwidth=.005)+
+  ggtitle("Monthly returns since 2013")
+
+return_price2%>%
+  ggplot(aes(x=returns, fill=asset))+
+  geom_histogram(alpha=0.45, bindwidth=.01)+
+  facet_wrap(~asset)+
+  ggtitle("Monthly returns since 2013")+
+  theme_update(plot.title=element_text(hjust = 0.5))
+
+return_price2%>%
+  ggplot(aes(x=returns, colour=asset))+
+  geom_density(alpha=0.1)+
+  ggtitle("Monthly returns since 2013")+
+  xlab("Monthly Returns")+
+  ylab("Distribution")
+  theme_update(plot.title=element_text(hjust = 0.5))
+
+return_price2 %>%
+ggplot(aes(x = returns)) +
+geom_density(aes(color = asset), alpha = 1) +
+geom_histogram(aes(fill = asset), alpha = 0.45, binwidth = .01) +
+guides(fill = FALSE) +
+facet_wrap(~asset) +
+ggtitle("Monthly Returns Since 2013") +
+xlab("monthly returns") +
+ylab("distribution") +
+theme_update(plot.title = element_text(hjust = 0.5))
+                                       
+#the third symbol                                      
+highchart(type = "stock")%>%
+  hc_title(text="Monthly log Return")%>%
+  hc_add_series(price2_month[,symbols2[1]],
+                name=symbols2[2])%>%
+  hc_add_series(price2_month[,symbols2[2]],
+                name=symbols2[2])%>%
+  hc_add_series(price2_month[,symbols2[3]],
+                name=symbols2[3])%>%
+  hc_add_series(price2_month[,symbols2[4]],
+                name=symbols2[4])%>%
+  hc_add_series(price2_month[,symbols2[5]],
+                name=symbols2[5])%>%
+  hc_add_theme(hc_theme_flat())%>%
+  hc_navigator(enabled=FALSE)%>%
+  hc_scrollbar(enabled=FALSE)%>%
+  hc_exporting(enabled=TRUE)%>%
+  hc_legend(enabled=TRUE)
+```
+
+
+```{r portfolio, include=TRUE, echo=TRUE}
+# create the first portfolio
+w<-c(0.4,0.2,0.1,0.15,0.15)
+tibble(w, symbols1)
+tibble(w,symbols1)%>%
+  summarise(tote=sum(w))
+w_1<-w[1]
+w_2<-w[2]
+w_3<-w[3]
+w_4<-w[4]
+w_5<-w[5]
+#separate the returns
+asset1<-asset_price1[,1]
+asset2<-asset_price1[,2]
+asset3<-asset_price1[,3]
+asset4<-asset_price1[,4]
+asset5<-asset_price1[,5]
+portfolio1<-(asset1*w_1)+
+  (asset2*w_2)+
+  (asset3*w_3)+(asset4*w_4)+(asset5*w_5)
+head(portfolio1,3)
+names(portfolio1)<-"returns"
+head(portfolio1,3)
+```
+
+```{r return, include=TRUE, echo=TRUE}
+# other ways to do it in xts portfolio
+#use Return.portfolio from PerformanceAnalytics
+portfolio_return1<-Return.portfolio(asset_price1,
+                                    weights=w,rebalance_on = "months")%>%
+  `colnames<-`("returns")
+head(portfolio_return1)
+```
+
+
+#return of the portfolio with tidyverse
+```{r return, include=TRUE, echo=TRUE}
+z<-c(0.3,0.2, 0.15, 0.15,0.2)
+portfolio_return2<-return_price2%>%
+  group_by(asset)%>%
+  mutate(weights=case_when(asset==symbols2[1]~z[1],
+                           asset==symbols2[2]~z[2],
+                           asset==symbols2[3]~z[3],
+                           asset==symbols2[4]~z[4],
+                           asset==symbols2[5]~z[5]),
+         #add a colunm to do the product between the return and weight
+         weighted_return=returns*weights)%>%
+  # we need to add all the weighted returns per date
+  group_by(date)%>%
+  summarise(returns=sum(weighted_return))
+head(portfolio_return2)
+```
+
+#Graphs of the portfolios
+```{r plot, include=TRUE, echo=TRUE}
+# plot the returns of the first portfolios
+#use charts when the data in xts world
+highchart(type = "stock")%>%
+  hc_title(text="Portfolio Monthly Returns")%>%
+  hc_add_series(portfolio1$returns, 
+                name="Rebalanced Monthly",
+                color="cornflowerblue")%>%
+  hc_add_theme(hc_theme_flat())%>%
+  hc_navigator(enabled=FALSE)%>%
+  hc_scrollbar(enabled=FALSE)%>%
+  hc_legend(enabled=TRUE)%>%
+  hc_exporting(enabled=TRUE)
+
+#plot the returns of the second portfolio
+#use ggplot because it is from tidyverse world
+portfolio_return2%>%
+  ggplot(aes(x=date, y=returns))+
+  geom_line(colour="cornflowerblue")+
+  xlab("date")+
+  ylab("monthly returns")+
+  theme_update(plot.title=element_text(hjust = 0.5))+
+  ggtitle("Portfolio Returns Scatter")+
+  scale_x_date(breaks = pretty_breaks(n=6))
+
+# let's plot the returns with points
+#Scatter plot
+portfolio_return2%>%
+  ggplot(aes(x=date, y=returns))+
+  geom_point(colour="cornflowerblue")+
+  xlab("date")+
+  ylab("monthly returns")+
+  theme_update(plot.title=element_text(hjust = 0.5))+
+  ggtitle("Portfolio Returns Distribution")+
+  scale_x_date(breaks = pretty_breaks(n=6))
+
+# let's plot the histogram
+portfolio_return2%>%
+  ggplot(aes(x=returns))+
+  geom_histogram(bindwidth=0.005,
+                 fill="cornflowerblue",
+                 color="cornflowerblue")+
+  theme_update(plot.title=element_text(hjust = 0.5))+
+  ggtitle("Portfolio Returns Distribution")
+
+# let's plot the histogram by adding the layer of density
+portfolio_return2%>%
+  ggplot(aes(x=returns))+
+  geom_histogram(bindwidth=0.01,
+                 fill="cornflowerblue",
+                 color="cornflowerblue")+
+  geom_density(alpha=1, color="red")+
+  theme_update(plot.title=element_text(hjust = 0.5))+
+  ggtitle("Portfolio Returns Scatter")
+
+# compare the distribution of the assets while plotting the portfolio
+#visualization with tidyverse
+return_price2%>%
+  ggplot(aes(x=returns, fill=asset))+
+  geom_histogram(bindwidth=0.01, alpha=0.5)+
+  geom_histogram(data = portfolio_return2,
+                 fill="cornflowerblue",
+                 bindwidth=0.01)+
+  theme_update(plot.title=element_text(hjust = 0.5))+
+  ggtitle("Portfolio and asset monthly Returns")
+
+```
+
+# Analysis of Risk 
+## Standard deviation in the xts world
+```{r risk, include=TRUE, echo=TRUE}
+#covariance matrix of returns
+covariance_return1<-cov(asset_price1)
+round(covariance_return1,3)
+sd_matrix1<-sqrt(t(w)%*%covariance_return1%*%w)
+head(sd_matrix1)
+sd_matrix1_percent<-round(sd_matrix1*100,2)%>%
+  `colnames<-`("standard deviation")
+```
+
+##Standard Deviation in the tidyverse world
+
+```{r standard, include=TRUE, echo=TRUE}
+portfolio_sd<-StdDev(asset_price1, weights = w)
+portfoli_sd_percent<-round(portfolio_sd*100, 2)
+portfoli_sd_percent[1,1]
+```
+
+
+```{r deviation, include=TRUE, echo=TRUE}
+portfolio_sd_percent<-portfolio_return2%>%
+  summarise(sd=sd(returns),
+            sd_byhand=sqrt(sum((returns-mean(returns))^2)/(nrow(.)-1)))%>%
+  mutate(dplyr=round(sd,4)*100,
+         dplyr_byhand=round(sd_byhand,4)*100)
+portfolio_sd_percent%>%select(dplyr,dplyr_byhand)
+```
