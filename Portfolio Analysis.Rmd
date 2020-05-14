@@ -16,6 +16,7 @@ library(tibbletime)
 library(highcharter)
 library(scales)
 library(purrr)
+#get the data by symbols on the yahoo website
 symbols1<-c("SPY", "FB", "FORD", "DIS", "EBAY")
 price1<-getSymbols(symbols1, 
                    src = "yahoo",
@@ -23,6 +24,7 @@ price1<-getSymbols(symbols1,
                    to="2017-12-31",
                    auto.assign = TRUE,
                    warnings = FALSE)%>%
+  #get the adjusted column from the data
   map(~Ad(get(.)))%>%
   reduce(merge)%>%
   `colnames<-`(symbols1)
@@ -80,7 +82,7 @@ price2_month<-price2%>%
 head(price2_month)
 
 #visualize the assets
-return_price2<-price2_month%>%
+return_price<-price2_month%>%
   gather(asset, returns, -date)%>%
   group_by(asset)
 head(return_price2)
@@ -232,6 +234,8 @@ names(portfolio1)<-"returns"
 head(portfolio1,3)
 ```
 
+
+
 ```{r return, include=TRUE, echo=TRUE}
 # other ways to do it in xts portfolio
 #use Return.portfolio from PerformanceAnalytics
@@ -357,4 +361,59 @@ portfolio_sd_percent<-portfolio_return2%>%
   mutate(dplyr=round(sd,4)*100,
          dplyr_byhand=round(sd_byhand,4)*100)
 portfolio_sd_percent%>%select(dplyr,dplyr_byhand)
+```
+
+```{r skewness, include=TRUE, echo=TRUE}
+#Skewness in xts
+#portfolio's return with xts
+head(portfolio_return1)
+#use the function skewness() from PerformanceAnalytics  
+skew_xts<-skewness(portfolio_return1$returns)
+skew_xts#it is negative, it implies that there is a large portion of negative returns
+# Since tidyverse was used, and we used tibble for it. we cannot use skewness() from PerformanceAnalytics package, we will use summarise() function, the result will be saved under the name skew_byhand
+
+head(portfolio_return2)
+
+skew_tidyverse<-portfolio_return2%>%
+  summarise(skew_builtin=skewness(returns),
+            skew_byhand=
+              (sum((returns-mean(returns))^3)/length(returns))/((sum((returns-mean(returns))^2)/length(returns)))^(3/2))%>%
+  select(skew_builtin, skew_byhand)
+skew_tidyverse
+skew_tidyverse%>%
+  mutate(xts=coredata(skew_xts))%>%
+  mutate_all(funs(round(.,3)))
+              
+```
+
+#visualization of skewness
+```{r visualization, include=TRUE, echo=TRUE}
+#visualize skewness
+portfolio_return2%>%
+  ggplot(aes(x=returns))+
+  geom_histogram(alpha=.7,
+                 binwidth = .003,
+                 fill="cornflowerblue",
+                 color="cornflowerblue") +
+  scale_x_continuous(breaks=
+                        pretty_breaks(n=10))
+
+# build density plot with ggplot by using stat_density() in ggplot()
+portfolio_density<-portfolio_return2%>%
+  ggplot(aes(x=returns))+
+  stat_density(geom = "line",
+               alpha=1,
+               color="cornflowerblue")
+portfolio_density
+# Use shaded area to color the part that falls bellow the mean
+area_shaded<-ggplot_build(portfolio_density)$data[[1]]%>%
+  filter(x<mean(portfolio_return2$returns))
+area_shaded
+
+density_plot_shaded<-portfolio_density+
+  geom_area(data = area_shaded,
+            aes(x=x, y=y),
+            fill="pink",
+            alpha=0.5)
+density_plot_shaded
 ```
