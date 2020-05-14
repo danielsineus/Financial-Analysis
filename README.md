@@ -15,4 +15,7 @@ I would like to conduct analysis on different portfolios having different stocks
 * associate values to the weights and create the portfolio
 * create returns with xts by using the return.portfolio() from PerformanceAnalytics package
 * create the returns of the portfolio with tidyverse
-## Visualize portfolio
+## Visualization of portfolio
+* visualizing the returns of the portfolio
+* visualizing the skewness 
+* visualizing the kurtosis
